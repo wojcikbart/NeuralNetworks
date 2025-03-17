@@ -3,15 +3,24 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 class NeuralNetwork():
-    def __init__(self, layers, activation_fun='sigmoid'):
+    def __init__(self, X, y, layers,
+                  activation_fun='sigmoid', output_activation='linear',
+                  loss_fun='mse', regularization=None, reg_lambda=0.001):
         """
         layers: list of integers, number of neurons in each layer (e.g. [2, 3, 1] for 2 input neurons, 3 neurons in the hidden layer, and 1 output neuron)
         This defines the necessary dimensions for the weight matrices and bias vectors.      
     """
+        
+        self.X = X
+        self.y = y
         self.layers = layers
         self.weights = []
         self.biases = []
         self.activation_fun = activation_fun
+        self.output_activation = output_activation,
+        self.loss_fun = loss_fun
+        self.regularization = regularization
+        self.reg_lambda = reg_lambda
         self.weights, self.biases = self.generate_random_weights(activation_fun=activation_fun)
         self.layer_values = [0] * (len(self.layers) - 1)
         self.best_weights = None
@@ -45,20 +54,51 @@ class NeuralNetwork():
             return self.activation(x) * (1 - self.activation(x))
         if self.activation_fun == 'relu':
             return (x > 0).astype(float)
+        
+    def loss(self, y_true, y_pred, include_regularization=True):
+        if self.loss_fun == 'mse':
+            loss = np.mean(np.square(y_true - y_pred))
+        if self.loss_fun == 'mae':
+            loss = np.mean(np.abs(y_true - y_pred))
+
+        regularization = 0
+
+        if self.regularization is not None and include_regularization:
+            
+            if self.regularization == 'l1':
+                for w in self.weights:
+                    regularization += np.sum(np.abs(w))
+            if self.regularization == 'l2':
+                for w in self.weights:
+                    regularization += np.sum(np.square(w))
+
+        return loss + self.reg_lambda * regularization
     
-    def forward(self, x, best_model=False):
-        if best_model:
-            self.weights = self.best_weights
-            self.biases = self.best_biases
+    def loss_derivative(self, y_true, y_pred):
+        if self.loss_fun == 'mse':
+            return y_pred - y_true
+        if self.loss_fun == 'mae':
+            return np.sign(y_pred - y_true)
+    
+    def forward(self, x, store_values=False, best_weights=False):
+        if best_weights:
+            weights = self.best_weights
+            biases = self.best_biases
+
         a = x
-        for i, (w, b) in enumerate(zip(self.weights, self.biases)):
-            z = np.dot(a, w) + b
-            self.layer_values[i] = z  # Store activations for backprop
-            a = self.activation(z) if i < len(self.weights) - 1 else z        
+        if store_values:
+            for i, (w, b) in enumerate(zip(self.weights, self.biases)):
+                z = np.dot(a, w) + b
+                self.layer_values[i] = z  # Store activations for backprop
+                a = self.activation(z) if i < len(self.weights) - 1 else z 
+        else:
+            for i, (w, b) in enumerate(zip(self.weights, self.biases)):
+                z = np.dot(a, w) + b
+                a = self.activation(z) if i < len(self.weights) - 1 else z 
         return a
     
-    def backward(self, x, y, y_pred, learning_rate):
-        error = y_pred - y 
+    def backward(self, x, y, y_pred, learning_rate, grad_threshold=3):
+        error = self.loss_derivative(y, y_pred)
         delta = error
 
         for i in reversed(range(len(self.layer_values))):
@@ -67,88 +107,87 @@ class NeuralNetwork():
 
             # Weights and biases update
             input = x if i == 0 else self.layer_values[i - 1]
-            self.weights[i] -= learning_rate * np.clip(np.dot(input.T, delta), -2, 2)
+            gradient = np.dot(input.T, delta)
+            grad_norm = np.linalg.norm(gradient)
+            if grad_norm > grad_threshold:
+                gradient = grad_threshold * gradient / grad_norm
+            self.weights[i] -= learning_rate * gradient
             self.biases[i] -= learning_rate * np.mean(delta, axis=0, keepdims=True)
 
 
-    def train(self, x, y, learning_rate, epochs, mini_batch=False, batch_size=32, stop_condition=0.5, report_interval=1000):
+    def train(self, learning_rate, epochs, validation_data=None,
+              mini_batch=False, batch_size=32,
+              stop_condition=0.5, patience=1000, report_interval=1000):
         
+        x = self.X
+        y = self.y
         num_samples = x.shape[0]
         history = []
-        pred_history = []
         weight_history = []
+        wait = 0
 
-        start_mse = np.mean(np.square(y - self.forward(x)))
+        start_mse = self.loss(y, self.forward(x))
 
         print(f"Starting MSE: {start_mse:.2f}")
-        if mini_batch:
-            for epoch in range(epochs):
-                indices = np.random.permutation(num_samples)  # Shuffle dataset
+        for epoch in range(epochs):
+            if mini_batch:
+                indices = np.random.permutation(num_samples)
                 for i in range(0, num_samples, batch_size):
                     batch_x = x[indices[i:i + batch_size]]
                     batch_y = y[indices[i:i + batch_size]]
-
-                    y_pred = self.forward(batch_x)
+                    
+                    y_pred = self.forward(batch_x, store_values=True)
                     self.backward(batch_x, batch_y, y_pred, learning_rate)
-
-                mse = np.mean(np.square(y - self.forward(x)))
-                history.append(mse)
-                weight_history.append(self.weights[0][0][0])
-
-                if epoch % report_interval == 0:
-                    print(f"Epoch {self.model_age + epoch}, MSE: {mse:.2f}")
-                    # pred_history.append(self.forward(x))
-
-                if mse < stop_condition or not np.isfinite(mse):
-                    break
-
-                if mse < self.best_mse:
-                    self.best_mse = mse
-                    self.best_weights = self.weights
-                    self.best_biases = self.biases
-
-        else:
-            for epoch in range(epochs):
-                y_pred = self.forward(x)
-                mse = np.mean(np.square(y - y_pred))
-                history.append(mse)
-                if mse < stop_condition or not np.isfinite(mse):
-                    break
+            else:
+                y_pred = self.forward(x, store_values=True)
                 self.backward(x, y, y_pred, learning_rate)
-                if epoch % report_interval == 0:
-                    print(f"Epoch {self.model_age + epoch}, MSE: {mse:.2f}")
-                    # pred_history.append(y_pred)
-                weight_history.append(self.weights[0][0][0])
 
-                if mse < self.best_mse:
-                    self.best_mse = mse
-                    self.best_weights = self.weights
-                    self.best_biases = self.biases
+            current_train_loss = self.loss(y, self.forward(x))
+            history.append(current_train_loss)
+            weight_history.append(self.weights[0][0][0])
+            
+            if epoch > 0 and epoch % (patience // 2) == 0:
+                if len(history) >= patience//2 and abs(history[-patience//2] - history[-1]) < 1e-4 and current_train_loss > 100:
+                    learning_rate *= 0.5
+                    print(f"Epoch {self.model_age + epoch}: Reducing learning rate to {learning_rate}")
+
+            if wait > patience // 2:
+                noise_scale = 0.01 * np.std(self.weights[0])
+                for i in range(len(self.weights)):
+                    self.weights[i] += np.random.normal(0, noise_scale, self.weights[i].shape)
+                print("Added noise to enable escape from local minimum or plateau")
+                wait = 0
+
+            if validation_data is not None:
+                x_val, y_val = validation_data
+                val_loss = self.loss(y_val, self.forward(x_val))
+                benchmark_loss = val_loss
+            else:
+                benchmark_loss = current_train_loss
+
+            if benchmark_loss < self.best_mse:
+                self.best_mse = benchmark_loss
+                self.best_weights = self.weights
+                self.best_biases = self.biases
+                wait = 0
+            else:
+                wait += 1
+                if wait >= patience:
+                    print(f"Early stopping at epoch {self.model_age + epoch}")
+                    break
+
+            if epoch % report_interval == 0:
+                if validation_data is not None:
+                    print(f"Epoch {self.model_age + epoch}, Train MSE: {current_train_loss:.2f}, Val MSE: {val_loss:.2f}")
+                else:
+                    print(f"Epoch {self.model_age + epoch}, Train MSE: {current_train_loss:.2f}")
 
         self.model_age += epoch + 1
-        
-        print(f"Final MSE: {mse} after {self.model_age} epochs")
-
-        # self.animate_training(x, y, pred_history)
+        print(f"Training complete. Final loss: {self.best_mse:.4f}")
         return history, weight_history
-    
-    def animate_training(self, x, y, pred_history):
-        fig, ax = plt.subplots()
-        true_scatter = ax.scatter(x, y, color='blue', label='True values')
-        pred_scatter = ax.scatter(x, pred_history[0], color='red', label='Predicted values')
-        ax.legend()
-
-        for pred in pred_history:
-            pred_scatter.set_offsets(np.c_[x, pred])
-            
-            plt.draw()
-            plt.pause(0.1)
-
-        plt.show()
         
-    def predict(self, x):
-        y_pred = self.forward(x, best_model=True)
-        return y_pred
+    def predict(self, x):    
+        return self.forward(x, best_weights=True)
 
     def set_weights(self, weights, biases):
         self.weights = weights
