@@ -17,7 +17,7 @@ class NeuralNetwork():
         self.weights = []
         self.biases = []
         self.activation_fun = activation_fun
-        self.output_activation = output_activation,
+        self.output_activation = output_activation
         self.loss_fun = loss_fun
         self.regularization = regularization
         self.reg_lambda = reg_lambda
@@ -55,6 +55,26 @@ class NeuralNetwork():
         if self.activation_fun == 'relu':
             return (x > 0).astype(float)
         
+    def output_activation_function(self, x):
+        if self.output_activation == 'linear':
+            return x
+        elif self.output_activation == 'sigmoid':
+            return 1 / (1 + np.exp(-x))
+        elif self.output_activation == 'softmax':
+            exp_x = np.exp(x - np.max(x, axis=1, keepdims=True))
+            return exp_x / np.sum(exp_x, axis=1, keepdims=True)
+        return x
+    
+    def output_activation_derivative(self, x):
+        if self.output_activation == 'linear':
+            return np.ones_like(x)
+        elif self.output_activation == 'sigmoid':
+            sig = self.output_activation_function(x)
+            return sig * (1 - sig)
+        elif self.output_activation == 'softmax':
+            return x * (1 - x)  # Simplified softmax derivative (for single-class case)
+        return np.ones_like(x)
+        
     def loss(self, y_true, y_pred, include_regularization=True):
         if self.loss_fun == 'mse':
             loss = np.mean(np.square(y_true - y_pred))
@@ -84,21 +104,24 @@ class NeuralNetwork():
         if best_weights:
             weights = self.best_weights
             biases = self.best_biases
+        else:
+            weights = self.weights
+            biases = self.biases
 
         a = x
         if store_values:
-            for i, (w, b) in enumerate(zip(self.weights, self.biases)):
+            for i, (w, b) in enumerate(zip(weights, biases)):
                 z = np.dot(a, w) + b
                 self.layer_values[i] = z  # Store activations for backprop
-                a = self.activation(z) if i < len(self.weights) - 1 else z 
+                a = self.activation(z) if i < len(weights) - 1 else self.output_activation_function(z)
         else:
-            for i, (w, b) in enumerate(zip(self.weights, self.biases)):
+            for i, (w, b) in enumerate(zip(weights, biases)):
                 z = np.dot(a, w) + b
-                a = self.activation(z) if i < len(self.weights) - 1 else z 
+                a = self.activation(z) if i < len(weights) - 1 else self.output_activation_function(z)
         return a
     
     def backward(self, x, y, y_pred, learning_rate, grad_threshold=3):
-        error = self.loss_derivative(y, y_pred)
+        error = self.loss_derivative(y, y_pred) * self.output_activation_derivative(y_pred)
         delta = error
 
         for i in reversed(range(len(self.layer_values))):
