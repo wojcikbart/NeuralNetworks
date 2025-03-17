@@ -120,7 +120,7 @@ class NeuralNetwork():
                 a = self.activation(z) if i < len(weights) - 1 else self.output_activation_function(z)
         return a
     
-    def backward(self, x, y, y_pred, learning_rate, grad_threshold=3):
+    def backward(self, x, y, y_pred, learning_rate, grad_threshold=5):
         error = self.loss_derivative(y, y_pred) * self.output_activation_derivative(y_pred)
         delta = error
 
@@ -134,7 +134,7 @@ class NeuralNetwork():
             grad_norm = np.linalg.norm(gradient)
             if grad_norm > grad_threshold:
                 gradient = grad_threshold * gradient / grad_norm
-            self.weights[i] -= learning_rate * gradient
+            self.weights[i] -= learning_rate * np.clip(gradient, -grad_threshold, grad_threshold)
             self.biases[i] -= learning_rate * np.mean(delta, axis=0, keepdims=True)
 
 
@@ -146,9 +146,12 @@ class NeuralNetwork():
         y = self.y
         num_samples = x.shape[0]
         history = []
-        weight_history = []
         wait = 0
 
+        if self.best_weights is not None:
+            self.weights = self.best_weights
+            self.biases = self.best_biases
+            
         start_mse = self.loss(y, self.forward(x))
 
         print(f"Starting MSE: {start_mse:.2f}")
@@ -157,8 +160,7 @@ class NeuralNetwork():
                 indices = np.random.permutation(num_samples)
                 for i in range(0, num_samples, batch_size):
                     batch_x = x[indices[i:i + batch_size]]
-                    batch_y = y[indices[i:i + batch_size]]
-                    
+                    batch_y = y[indices[i:i + batch_size]]     
                     y_pred = self.forward(batch_x, store_values=True)
                     self.backward(batch_x, batch_y, y_pred, learning_rate)
             else:
@@ -167,8 +169,7 @@ class NeuralNetwork():
 
             current_train_loss = self.loss(y, self.forward(x))
             history.append(current_train_loss)
-            weight_history.append(self.weights[0][0][0])
-            
+
             if epoch > 0 and epoch % (patience // 2) == 0:
                 if len(history) >= patience//2 and abs(history[-patience//2] - history[-1]) < 1e-4 and current_train_loss > 100:
                     learning_rate *= 0.5
@@ -198,6 +199,10 @@ class NeuralNetwork():
                 if wait >= patience:
                     print(f"Early stopping at epoch {self.model_age + epoch}")
                     break
+            
+            if benchmark_loss < stop_condition:
+                print(f"Stopping condition met at epoch {self.model_age + epoch}")
+                break
 
             if epoch % report_interval == 0:
                 if validation_data is not None:
@@ -207,7 +212,7 @@ class NeuralNetwork():
 
         self.model_age += epoch + 1
         print(f"Training complete. Final loss: {self.best_mse:.4f}")
-        return history, weight_history
+        return history
         
     def predict(self, x):    
         return self.forward(x, best_weights=True)
