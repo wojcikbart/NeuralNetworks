@@ -16,8 +16,8 @@ class NeuralNetwork():
         self.layers = layers
         self.weights = []
         self.biases = []
-        self.activation_fun = activation_fun
-        self.output_activation = output_activation
+        self.activation = ActivationFunction(activation_fun)
+        self.output_activation = ActivationFunction(output_activation)
         self.loss_fun = loss_fun
         self.regularization = regularization
         self.reg_lambda = reg_lambda
@@ -33,48 +33,16 @@ class NeuralNetwork():
         for i in range(len(self.layers) - 1):
             fan_in = self.layers[i]
             fan_out = self.layers[i+1]
-            if activation_fun == 'sigmoid':
+            if self.activation.name == 'sigmoid':
                 limit = np.sqrt(6 / (fan_in + fan_out))  # Xavier for sigmoid
-            if activation_fun == 'relu':
+            if self.activation.name == 'relu':
                 limit = np.sqrt(2 / fan_in)  # He for ReLU
             weight_matrix = np.random.uniform(-limit, limit, (fan_in, fan_out))
             bias_vector = np.zeros((1, fan_out))  # Common to initialize biases to 0
             weights.append(weight_matrix)
             biases.append(bias_vector)
         return weights, biases
-    
-    def activation(self, x):
-        if self.activation_fun == 'sigmoid':
-            return 1 / (1 + np.exp(-x))
-        if self.activation_fun == 'relu':
-            return np.maximum(0, x)
-        
-    def activation_derivative(self, x):
-        if self.activation_fun == 'sigmoid':
-            return self.activation(x) * (1 - self.activation(x))
-        if self.activation_fun == 'relu':
-            return (x > 0).astype(float)
-        
-    def output_activation_function(self, x):
-        if self.output_activation == 'linear':
-            return x
-        elif self.output_activation == 'sigmoid':
-            return 1 / (1 + np.exp(-x))
-        elif self.output_activation == 'softmax':
-            exp_x = np.exp(x - np.max(x, axis=1, keepdims=True))
-            return exp_x / np.sum(exp_x, axis=1, keepdims=True)
-        return x
-    
-    def output_activation_derivative(self, x):
-        if self.output_activation == 'linear':
-            return np.ones_like(x)
-        elif self.output_activation == 'sigmoid':
-            sig = self.output_activation_function(x)
-            return sig * (1 - sig)
-        elif self.output_activation == 'softmax':
-            return x * (1 - x)  # Simplified softmax derivative (for single-class case)
-        return np.ones_like(x)
-        
+
     def loss(self, y_true, y_pred, include_regularization=True):
         if self.loss_fun == 'mse':
             loss = np.mean(np.square(y_true - y_pred))
@@ -109,24 +77,21 @@ class NeuralNetwork():
             biases = self.biases
 
         a = x
-        if store_values:
-            for i, (w, b) in enumerate(zip(weights, biases)):
-                z = np.dot(a, w) + b
-                self.layer_values[i] = z  # Store activations for backprop
-                a = self.activation(z) if i < len(weights) - 1 else self.output_activation_function(z)
-        else:
-            for i, (w, b) in enumerate(zip(weights, biases)):
-                z = np.dot(a, w) + b
-                a = self.activation(z) if i < len(weights) - 1 else self.output_activation_function(z)
+
+        for i, (w, b) in enumerate(zip(weights, biases)):
+            z = np.dot(a, w) + b
+            if store_values:
+                self.layer_values[i] = z
+            a = self.activation.activate(z) if i < len(weights) - 1 else self.output_activation.activate(z)
         return a
     
     def backward(self, x, y, y_pred, learning_rate, grad_threshold=5):
-        error = self.loss_derivative(y, y_pred) * self.output_activation_derivative(y_pred)
+        error = self.loss_derivative(y, y_pred) * self.output_activation.derivative(y_pred)
         delta = error
 
         for i in reversed(range(len(self.layer_values))):
             if i < len(self.layer_values) - 1:  # For Hidden layers
-                delta = np.dot(delta, self.weights[i + 1].T) * self.activation_derivative(self.layer_values[i])
+                delta = np.dot(delta, self.weights[i + 1].T) * self.activation.derivative(self.layer_values[i])
 
             # Weights and biases update
             input = x if i == 0 else self.layer_values[i - 1]
@@ -230,3 +195,34 @@ class NeuralNetwork():
     
     def get_layer_values(self):
         return self.layer_values
+
+
+class ActivationFunction:
+    def __init__(self, name):
+        self.name = name
+
+    def activate(self, x):
+        if self.name == 'sigmoid':
+            return 1 / (1 + np.exp(-x))
+        elif self.name == 'relu':
+            return np.maximum(0, x)
+        elif self.name == 'linear':
+            return x
+        elif self.name == 'softmax':
+            exp_x = np.exp(x - np.max(x, axis=1, keepdims=True))
+            return exp_x / np.sum(exp_x, axis=1, keepdims=True)
+        else:
+            raise ValueError("Unsupported activation function")
+
+    def derivative(self, x):
+        if self.name == 'sigmoid':
+            sig = self.activate(x)
+            return sig * (1 - sig)
+        elif self.name == 'relu':
+            return (x > 0).astype(float)
+        elif self.name == 'linear':
+            return np.ones_like(x)
+        elif self.name == 'softmax':
+            return x * (1 - x) 
+        else:
+            raise ValueError("Unsupported activation function")
