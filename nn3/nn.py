@@ -5,7 +5,8 @@ import matplotlib.pyplot as plt
 class NeuralNetwork():
     def __init__(self, X, y, layers,
                   activation_fun='sigmoid', output_activation='linear',
-                  loss_fun='mse', regularization=None, reg_lambda=0.001):
+                  loss_fun='mse', regularization=None, reg_lambda=0.001,
+                  momentum=0.9):
         """
         layers: list of integers, number of neurons in each layer (e.g. [2, 3, 1] for 2 input neurons, 3 neurons in the hidden layer, and 1 output neuron)
         This defines the necessary dimensions for the weight matrices and bias vectors.      
@@ -27,6 +28,11 @@ class NeuralNetwork():
         self.best_biases = None
         self.best_mse = np.inf
         self.model_age = 0
+
+        # momentum
+        self.momentum = momentum
+        self.v_weights = [np.zeros_like(w) for w in self.weights]
+        self.v_biases = [np.zeros_like(b) for b in self.biases]
 
     def generate_random_weights(self, activation_fun='sigmoid'):
         weights, biases = [], []
@@ -99,9 +105,13 @@ class NeuralNetwork():
             grad_norm = np.linalg.norm(gradient)
             if grad_norm > grad_threshold:
                 gradient = grad_threshold * gradient / grad_norm
-            self.weights[i] -= learning_rate * np.clip(gradient, -grad_threshold, grad_threshold)
-            self.biases[i] -= learning_rate * np.mean(delta, axis=0, keepdims=True)
 
+            self.v_weights[i] = self.momentum * self.v_weights[i] + learning_rate * np.clip(gradient, -grad_threshold, grad_threshold)
+            self.v_biases[i] = self.momentum * self.v_biases[i] + learning_rate * np.mean(delta, axis=0, keepdims=True)
+
+            
+            self.weights[i] -= self.v_weights[i]
+            self.biases[i] -= self.v_biases[i]
 
     def train(self, learning_rate, epochs, validation_data=None,
               mini_batch=False, batch_size=32,
