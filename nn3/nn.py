@@ -27,10 +27,15 @@ class NeuralNetwork():
         self.best_weights, self.best_biases = self.generate_random_weights(activation_fun=activation_fun)
         self.best_mse = np.inf
         self.model_age = 0
+        self.loss_history = []
 
         # momentum
         self.v_weights = [np.zeros_like(w) for w in self.weights]
         self.v_biases = [np.zeros_like(b) for b in self.biases]
+
+        # rmsprop
+        self.rmsprop_weights = [np.zeros_like(w) for w in self.weights]
+        self.rmsprop_biases = [np.zeros_like(b) for b in self.biases]
 
     def generate_random_weights(self, activation_fun='sigmoid'):
         weights, biases = [], []
@@ -112,17 +117,42 @@ class NeuralNetwork():
             self.v_biases[i] = momentum * self.v_biases[i] + learning_rate * np.mean(delta, axis=0, keepdims=True)
             self.biases[i] -= self.v_biases[i] 
 
+    def backward_rmsprop(self, x, y, y_pred, learning_rate, decay, epsilon, grad_threshold=10):
+        error = self.loss_derivative(y, y_pred) * self.output_activation.derivative(y_pred)
+        delta = error
+
+        for i in reversed(range(len(self.layer_values))):
+            if i < len(self.layer_values) - 1:
+                delta = np.dot(delta, self.weights[i + 1].T) * self.activation.derivative(self.layer_values[i])
+
+            input = x if i == 0 else self.layer_values[i - 1]
+            gradient = np.dot(input.T, delta) / x.shape[0]
+            grad_norm = np.linalg.norm(gradient)
+            if grad_norm > grad_threshold:
+                gradient = grad_threshold * gradient / grad_norm
+
+            ## RMSprop
+            self.rmsprop_weights[i] = decay * self.rmsprop_weights[i] + (1 - decay) * gradient ** 2
+            adjusted_lr_weights = learning_rate / (np.sqrt(self.rmsprop_weights[i]) + epsilon)
+            self.weights[i] -= adjusted_lr_weights * gradient
+
+            self.rmsprop_biases[i] = decay * self.rmsprop_biases[i] + (1 - decay) * np.mean(delta, axis=0, keepdims=True) ** 2
+            adjusted_lr_biases = learning_rate / (np.sqrt(self.rmsprop_biases[i]) + epsilon)
+            self.biases[i] -= adjusted_lr_biases * np.mean(delta, axis=0, keepdims=True)
+
     def train(self, learning_rate, epochs, validation_data=None,
-              mini_batch=False, batch_size=32, momentum=0,
+              mini_batch=False, batch_size=32, optimization='momentum',
+              momentum=0, rmsprop_decay=0.9, epsilon=1e-8,
               stop_condition=0.5, patience=1000, report_interval=1000):
         
         x = self.X
         y = self.y
         num_samples = x.shape[0]
-        history = []
         wait = 0
-        self.v_weights = [np.zeros_like(w) for w in self.weights]
-        self.v_biases = [np.zeros_like(b) for b in self.biases]
+        # self.v_weights = [np.zeros_like(w) for w in self.weights]
+        # self.v_biases = [np.zeros_like(b) for b in self.biases]
+        self.rmsprop_weights = [np.zeros_like(w) for w in self.weights]
+        self.rmsprop_biases = [np.zeros_like(b) for b in self.biases]
 
         if self.best_weights is not None:
             self.weights = [w.copy() for w in self.best_weights]
@@ -138,13 +168,20 @@ class NeuralNetwork():
                     batch_x = x[indices[i:i + batch_size]]
                     batch_y = y[indices[i:i + batch_size]]     
                     y_pred = self.forward(batch_x, store_values=True)
-                    self.backward(batch_x, batch_y, y_pred, learning_rate, momentum)
+                    if optimization == 'momentum':
+                        self.backward(batch_x, batch_y, y_pred, learning_rate, momentum)
+                    elif optimization == 'rmsprop':
+                        self.backward_rmsprop(batch_x, batch_y, y_pred, learning_rate, 
+                                           rmsprop_decay, epsilon)
             else:
                 y_pred = self.forward(x, store_values=True)
-                self.backward(x, y, y_pred, learning_rate, momentum)
+                if optimization == 'momentum':
+                    self.backward(x, y, y_pred, learning_rate, momentum)
+                elif optimization == 'rmsprop':
+                    self.backward_rmsprop(x, y, y_pred, learning_rate, 
+                                        rmsprop_decay, epsilon)
 
             current_train_loss = self.loss(y, self.forward(x))
-            history.append(current_train_loss)
 
             if validation_data is not None:
                 x_val, y_val = validation_data
@@ -164,6 +201,8 @@ class NeuralNetwork():
                 #     print(f"Early stopping at epoch {self.model_age + epoch}")
                 #     break
             
+            self.loss_history.append(benchmark_loss)
+            
             if benchmark_loss < stop_condition:
                 print(f"Stopping condition met at epoch {self.model_age + epoch}")
                 break
@@ -176,7 +215,7 @@ class NeuralNetwork():
 
         self.model_age += epoch + 1
         print(f"Training complete. Final loss: {self.best_mse:.4f}")
-        return history
+        return self.loss_history
         
     def predict(self, x):    
         return self.forward(x, best_weights=True)
