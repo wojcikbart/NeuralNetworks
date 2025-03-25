@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from tqdm.auto import tqdm
 
 class NeuralNetwork():
     def __init__(self, X, y, layers,
@@ -25,7 +26,7 @@ class NeuralNetwork():
         self.layer_values = [0] * (len(self.layers) - 1)
         self.activated_values = [0] * (len(self.layers) - 1)
         self.best_weights, self.best_biases = self.generate_random_weights(activation_fun=activation_fun)
-        self.best_mse = np.inf
+        self.best_loss = np.inf
         self.model_age = 0
         self.best_age = 0
         self.loss_history = []
@@ -179,83 +180,80 @@ class NeuralNetwork():
             self.biases[i] -= adjusted_lr_biases * np.mean(delta, axis=0, keepdims=True)
 
     def train(self, learning_rate, epochs, validation_data=None,
-              mini_batch=False, batch_size=32, optimization='momentum',
-              momentum=0, rmsprop_decay=0.9, epsilon=1e-8,
-              stop_condition=0.5, patience=1000, report_interval=1000):
-        
+          mini_batch=False, batch_size=32, optimization='momentum',
+          momentum=0, rmsprop_decay=0.9, epsilon=1e-8,
+          stop_condition=0.5, report_interval=1000):
+    
         x = self.X
         y = self.y
         num_samples = x.shape[0]
         wait = 0
-        # self.v_weights = [np.zeros_like(w) for w in self.weights]
-        # self.v_biases = [np.zeros_like(b) for b in self.biases]
-        self.rmsprop_weights = [np.zeros_like(w) for w in self.weights]
-        self.rmsprop_biases = [np.zeros_like(b) for b in self.biases]
 
-        if self.best_weights is not None:
-            self.weights = [w.copy() for w in self.best_weights]
-            self.biases = [b.copy() for b in self.best_biases]
-            self.loss_history = self.loss_history[:self.best_age]
-            
-        start_mse = self.loss(y, self.forward(x))
+        start_loss = self.loss(y, self.forward(x))
+        print(f"Starting loss: {start_loss:.2f}")
 
-        print(f"Starting MSE: {start_mse:.2f}")
-        for epoch in range(epochs):
-            if mini_batch:
-                indices = np.random.permutation(num_samples)
-                for i in range(0, num_samples, batch_size):
-                    batch_x = x[indices[i:i + batch_size]]
-                    batch_y = y[indices[i:i + batch_size]]     
-                    y_pred = self.forward(batch_x, store_values=True)
-                    if optimization == 'momentum':
-                        self.backward(batch_x, batch_y, y_pred, learning_rate, momentum)
-                    elif optimization == 'rmsprop':
-                        self.backward_rmsprop(batch_x, batch_y, y_pred, learning_rate, 
-                                           rmsprop_decay, epsilon)
-            else:
-                y_pred = self.forward(x, store_values=True)
-                if optimization == 'momentum':
-                    self.backward(x, y, y_pred, learning_rate, momentum)
-                elif optimization == 'rmsprop':
-                    self.backward_rmsprop(x, y, y_pred, learning_rate, 
-                                        rmsprop_decay, epsilon)
+        progress_bar = tqdm(
+        range(epochs), 
+        desc="Training", 
+        bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {postfix}",
+        ncols=150,
+        smoothing=0.5,
+        dynamic_ncols=False
+        )
 
-            current_train_loss = self.loss(y, self.forward(x))
-
-            if validation_data is not None:
-                x_val, y_val = validation_data
-                val_loss = self.loss(y_val, self.forward(x_val))
-                benchmark_loss = val_loss
-            else:
-                benchmark_loss = current_train_loss
-
-            if benchmark_loss < self.best_mse:
-                self.best_mse = benchmark_loss
-                self.best_weights = [w.copy() for w in self.weights]
-                self.best_biases = [b.copy() for b in self.biases]
-                self.best_age = self.model_age + epoch
-                wait = 0
-            else:
-                wait += 1
-                # if wait >= patience:
-                #     print(f"Early stopping at epoch {self.model_age + epoch}")
-                #     break
-            
-            self.loss_history.append(benchmark_loss)
-            
-            if benchmark_loss < stop_condition:
-                print(f"Stopping condition met at epoch {self.model_age + epoch}")
-                break
-
-            if epoch % report_interval == 0:
-                if validation_data is not None:
-                    print(f"Epoch {self.model_age + epoch}, Train loss: {current_train_loss:.2f}, Val loss: {val_loss:.2f}")
+        try:
+            for epoch in range(epochs):
+                if mini_batch:
+                    indices = np.random.permutation(num_samples)
+                    for i in range(0, num_samples, batch_size):
+                        batch_x = x[indices[i:i + batch_size]]
+                        batch_y = y[indices[i:i + batch_size]]     
+                        y_pred = self.forward(batch_x, store_values=True)
+                        if optimization == 'momentum':
+                            self.backward(batch_x, batch_y, y_pred, learning_rate, momentum)
+                        elif optimization == 'rmsprop':
+                            self.backward_rmsprop(batch_x, batch_y, y_pred, learning_rate, 
+                                            rmsprop_decay, epsilon)
                 else:
-                    print(f"Epoch {self.model_age + epoch}, Train loss: {current_train_loss:.2f}")
+                    y_pred = self.forward(x, store_values=True)
+                    if optimization == 'momentum':
+                        self.backward(x, y, y_pred, learning_rate, momentum)
+                    elif optimization == 'rmsprop':
+                        self.backward_rmsprop(x, y, y_pred, learning_rate, 
+                                            rmsprop_decay, epsilon)
+
+                current_train_loss = self.loss(y, self.forward(x))
+
+                if validation_data is not None:
+                    x_val, y_val = validation_data
+                    val_loss = self.loss(y_val, self.forward(x_val))
+                    benchmark_loss = val_loss
+                else:
+                    benchmark_loss = current_train_loss
+
+                if benchmark_loss < self.best_loss:
+                    self.best_loss = benchmark_loss
+                    self.best_weights = [w.copy() for w in self.weights]
+                    self.best_biases = [b.copy() for b in self.biases]
+                    self.best_age = self.model_age + epoch
+                    wait = 0
+                else:
+                    wait += 1
+                
+                self.loss_history.append(benchmark_loss)
+                
+                progress_bar.set_postfix_str(f"Loss:  Current:{benchmark_loss:7.4f},Best:{self.best_loss:7.4f}", refresh=False)
+                progress_bar.update()
+
+                if benchmark_loss < stop_condition:
+                    print(f"\nStopping condition met at epoch {self.model_age + epoch}")
+                    break
+
+        finally:
+            progress_bar.close()
 
         self.model_age += epoch + 1
-        print(f"Training complete. Final loss: {self.best_mse:.4f}")
-        return self.loss_history
+        print(f"\nTraining complete. Final loss: {self.best_loss:.4f}")
         
     def predict(self, x):    
         return self.forward(x, best_weights=True)
@@ -273,7 +271,9 @@ class NeuralNetwork():
     
     def get_layer_values(self):
         return self.layer_values
-
+    
+    def model_history(self):
+        return self.loss_history
 
 class ActivationFunction:
     def __init__(self, name):
@@ -281,6 +281,7 @@ class ActivationFunction:
 
     def activate(self, x):
         if self.name == 'sigmoid':
+            x = np.clip(x, -500, 500)
             return 1 / (1 + np.exp(-x))
         elif self.name == 'relu':
             return np.maximum(0, x)
@@ -294,14 +295,14 @@ class ActivationFunction:
 
     def derivative(self, x):
         if self.name == 'sigmoid':
-            sig = self.activate(x)
+            sig = np.clip(self.activate(x), 1e-9, 1 - 1e-7)
             return sig * (1 - sig)
         elif self.name == 'relu':
             return (x > 0).astype(float)
         elif self.name == 'linear':
             return np.ones_like(x)
         elif self.name == 'softmax':
-            x = self.activate(x)
-            return x * (1 - x) 
+            s = self.activate(x)
+            return s * (1 - s) 
         else:
             raise ValueError("Unsupported activation function")
