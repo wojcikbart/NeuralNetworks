@@ -1,8 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from tqdm.auto import tqdm
-
+from tqdm import tqdm
 class NeuralNetwork():
     def __init__(self, X, y, layers,
                   activation_fun='sigmoid', output_activation='linear',
@@ -200,6 +199,7 @@ class NeuralNetwork():
         smoothing=0.5,
         dynamic_ncols=False
         )
+
 
         try:
             for epoch in range(epochs):
