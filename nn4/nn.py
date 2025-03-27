@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from tqdm import tqdm
+from tqdm.notebook import tqdm
 class NeuralNetwork():
     def __init__(self, X, y, layers,
                   activation_fun='sigmoid', output_activation='linear',
@@ -197,7 +197,7 @@ class NeuralNetwork():
         bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {postfix}",
         ncols=150,
         smoothing=0.5,
-        dynamic_ncols=False
+        dynamic_ncols=True
         )
 
 
