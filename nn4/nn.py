@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 class NeuralNetwork():
     def __init__(self, X, y, layers,
                   activation_fun='sigmoid', output_activation='linear',
@@ -61,24 +61,22 @@ class NeuralNetwork():
         elif self.loss_fun == 'mae':
             loss = np.mean(np.abs(y_true - y_pred))
         elif self.loss_fun == 'crossentropy':
-            # Handle binary cross-entropy (single column output)
+            # binary classification
             if y_pred.shape[1] == 1:
-                # Clip predictions to prevent log(0)
                 y_pred = np.clip(y_pred, epsilon, 1 - epsilon)
                 loss = -np.mean(y_true * np.log(y_pred) + (1 - y_true) * np.log(1 - y_pred))
             
-            # Handle multi-class cross-entropy (multiple columns)
+            # multi-class classification
             else:
                 # One-hot encoding check
                 if y_true.ndim == 1 or y_true.shape[1] == 1:
-                    # Convert to one-hot encoding if needed
+                    # One hot encoding if needed
                     y_true_onehot = np.zeros_like(y_pred)
                     for i, label in enumerate(y_true):
                         y_true_onehot[i, int(label)] = 1
                 else:
                     y_true_onehot = y_true
                 
-                # Clip predictions to prevent log(0)
                 y_pred = np.clip(y_pred, epsilon, 1 - epsilon)
                 loss = -np.mean(np.sum(y_true_onehot * np.log(y_pred), axis=1))
 
@@ -98,15 +96,15 @@ class NeuralNetwork():
         elif self.loss_fun == 'mae':
             return np.sign(y_pred - y_true)
         elif self.loss_fun == 'crossentropy':
-            # F binary classification
+            # binary classification
             if y_pred.shape[1] == 1:
                 return y_pred - y_true
             
-            # Handle multi-class classification
+            # multi-class classification
             else:
                 # One-hot encoding check
                 if y_true.ndim == 1 or y_true.shape[1] == 1:
-                    # Convert to one-hot encoding if needed
+                    # One hot encoding if needed
                     y_true_onehot = np.zeros_like(y_pred)
                     for i, label in enumerate(y_true):
                         y_true_onehot[i, int(label)] = 1
@@ -197,7 +195,7 @@ class NeuralNetwork():
         bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {postfix}",
         ncols=150,
         smoothing=0.5,
-        dynamic_ncols=True
+        dynamic_ncols=False
         )
 
 
@@ -274,6 +272,19 @@ class NeuralNetwork():
     
     def model_history(self):
         return self.loss_history
+    
+    def plot_loss(self, log_scale=False):
+        plt.figure(figsize=(10, 5))
+        plt.plot(self.loss_history, label='Loss History')
+        if log_scale:
+            plt.yscale('log')
+        plt.xlabel('Epochs')
+        plt.ylabel('Loss')
+        plt.title('Loss History')
+        plt.legend()
+        plt.grid()
+        plt.show()        
+
 
 class ActivationFunction:
     def __init__(self, name):
@@ -303,6 +314,6 @@ class ActivationFunction:
             return np.ones_like(x)
         elif self.name == 'softmax':
             s = self.activate(x)
-            return s * (1 - s) 
+            return s * (1 - s)     
         else:
             raise ValueError("Unsupported activation function")
