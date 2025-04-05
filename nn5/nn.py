@@ -314,8 +314,6 @@ class ActivationFunction:
             return np.ones_like(x)
         elif self.name == 'softmax':
             s = self.activate(x)
-            return np.ones_like(s)
-            # return np.einsum('ij,ik->ijk', s, np.eye(s.shape[1])) - np.einsum('ij,ik->ijk', s, s)
-            # return s * (1 - s)     
+            return s * (1 - s)     
         else:
             raise ValueError("Unsupported activation function")
