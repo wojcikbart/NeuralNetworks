@@ -47,6 +47,10 @@ class NeuralNetwork():
                 limit = np.sqrt(6 / (fan_in + fan_out))  # Xavier for sigmoid
             elif self.activation.name == 'relu':
                 limit = np.sqrt(2 / fan_in)  # He for ReLU
+            elif self.activation.name == 'tanh':
+                limit = np.sqrt(6 / (fan_in + fan_out))
+            elif self.activation.name == 'linear':
+                limit = np.sqrt(6 / (fan_in + fan_out))
             weight_matrix = np.random.uniform(-limit, limit, (fan_in, fan_out))
             bias_vector = np.zeros((1, fan_out))  # Common to initialize biases to 0
             weights.append(weight_matrix)
@@ -298,6 +302,9 @@ class ActivationFunction:
             return np.maximum(0, x)
         elif self.name == 'linear':
             return x
+        elif self.name == 'tanh':
+            x = np.clip(x, -500, 500)
+            return np.tanh(x)
         elif self.name == 'softmax':
             exp_x = np.exp(x - np.max(x, axis=1, keepdims=True))
             return exp_x / np.sum(exp_x, axis=1, keepdims=True)
@@ -312,8 +319,10 @@ class ActivationFunction:
             return (x > 0).astype(float)
         elif self.name == 'linear':
             return np.ones_like(x)
+        elif self.name == 'tanh':
+            return 1 - np.tanh(x) ** 2
         elif self.name == 'softmax':
             s = self.activate(x)
-            return s * (1 - s)     
+            return np.ones_like(s)        
         else:
             raise ValueError("Unsupported activation function")
