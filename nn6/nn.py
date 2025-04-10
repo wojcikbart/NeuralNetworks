@@ -95,20 +95,15 @@ class NeuralNetwork():
         return loss + self.reg_lambda * regularization
 
     def loss_derivative(self, y_true, y_pred):
-        if self.regularization == 'l1':
-            reg_term = self.reg_lambda * np.sign(self.weights)
-        elif self.regularization == 'l2':
-            reg_term = 2 * self.reg_lambda * self.weights
-        else:   
-            reg_term = 0
+        
         if self.loss_fun == 'mse':
-            return y_pred - y_true + reg_term
+            return y_pred - y_true 
         elif self.loss_fun == 'mae':
-            return np.sign(y_pred - y_true) + reg_term
+            return np.sign(y_pred - y_true) 
         elif self.loss_fun == 'crossentropy':
             # binary classification
             if y_pred.shape[1] == 1:
-                return y_pred - y_true + reg_term
+                return y_pred - y_true 
             
             # multi-class classification
             else:
@@ -121,7 +116,7 @@ class NeuralNetwork():
                 else:
                     y_true_onehot = y_true
                 
-                return y_pred - y_true_onehot + reg_term
+                return y_pred - y_true_onehot 
     
     def forward(self, x, store_values=False, best_weights=False):
         if best_weights:
