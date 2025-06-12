@@ -5,7 +5,7 @@ from tqdm import tqdm
 class NeuralNetwork():
     def __init__(self, X, y, layers,
                   activation_fun='sigmoid', output_activation='linear',
-                  loss_fun='mse'):
+                  loss_fun='mse', random_draw=False):
         """
         layers: list of integers, number of neurons in each layer (e.g. [2, 3, 1] for 2 input neurons, 3 neurons in the hidden layer, and 1 output neuron)
         This defines the necessary dimensions for the weight matrices and bias vectors.      
@@ -21,10 +21,11 @@ class NeuralNetwork():
         self.loss_fun = loss_fun
         self.regularization = None
         self.reg_lambda = 0
-        self.weights, self.biases = self.generate_random_weights(activation_fun=activation_fun)
+        self.weights, self.biases = self.generate_random_weights(activation_fun=activation_fun, 
+                                                                random_draw=random_draw)
         self.layer_values = [0] * (len(self.layers) - 1)
         self.activated_values = [0] * (len(self.layers) - 1)
-        self.best_weights, self.best_biases = self.generate_random_weights(activation_fun=activation_fun)
+        self.best_weights, self.best_biases = self.weights.copy(), self.biases.copy()
         self.best_loss = np.inf
         self.model_age = 0
         self.best_age = 0
@@ -38,8 +39,19 @@ class NeuralNetwork():
         self.rmsprop_weights = [np.zeros_like(w) for w in self.weights]
         self.rmsprop_biases = [np.zeros_like(b) for b in self.biases]
 
-    def generate_random_weights(self, activation_fun='sigmoid'):
+    def generate_random_weights(self, activation_fun='sigmoid', random_draw=False):
         weights, biases = [], []
+        if random_draw:
+            for i in range(len(self.layers) - 1):
+                fan_in = self.layers[i]
+                fan_out = self.layers[i+1]
+                weight_matrix = np.random.uniform(-1, 1, (fan_in, fan_out))
+                bias_vector = np.random.uniform(-1, 1, (1, fan_out))
+                weights.append(weight_matrix)
+                biases.append(bias_vector)
+                
+                return weights, biases
+        
         for i in range(len(self.layers) - 1):
             fan_in = self.layers[i]
             fan_out = self.layers[i+1]
